@@ -15,7 +15,7 @@
 
 // Peanut-GB emulator settings
 #define ENABLE_LCD	1
-#define ENABLE_SDCARD	1
+#define ENABLE_SDCARD	0
 #define PEANUT_GB_HIGH_LCD_ACCURACY 1
 #define PEANUT_GB_USE_BIOS 0
 
@@ -48,6 +48,7 @@
 #include <hardware/flash.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
+#include <hardware/i2c.h>
 #include <pico/bootrom.h>
 #include <pico/stdio.h>
 #include <pico/stdlib.h>
@@ -62,6 +63,7 @@
 #include "ssd1306.h"
 #include "sdcard.h"
 #include "gbcolors.h"
+#include "gbrom.h"
 
 /* GPIO Connections. */
 #define GPIO_UP		16
@@ -84,7 +86,8 @@
  * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemon Red)
  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
-const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
+//const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
+const uint8_t *rom = &test_gb;
 static unsigned char rom_bank0[65536];
 
 static uint8_t ram[32768];
@@ -103,6 +106,8 @@ static struct
 	unsigned up	: 1;
 	unsigned down	: 1;
 } prev_joypad_bits;
+
+ssd1306_t disp; // oled display
 
 /* Multicore command structure. */
 union core_cmd {
@@ -178,16 +183,21 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 #if ENABLE_LCD 
 void core1_lcd_draw_line(const uint_fast8_t line)
 {
-	static uint16_t fb[LCD_WIDTH];
-
-	for(unsigned int x = 0; x < LCD_WIDTH; x++)
+	if (line == 0) {
+		ssd1306_show(&disp);
+		ssd1306_clear(&disp);
+	}
+	int realy = ((int)line)<<2;
+	realy = realy==0?0:(realy/9);
+	realy = 64-realy;
+	for(float x = 0.0f; x < 128; x++)
 	{
-		fb[x] = palette[(pixels_buffer[x] & LCD_PALETTE_ALL) >> 4]
-				[pixels_buffer[x] & 3];
+		int realx = (int)((x==0?0:(x/128))*LCD_WIDTH);
+		if (!(pixels_buffer[realx]&2)) {
+			ssd1306_draw_pixel(&disp,128-((int)x),realy);
+		}
 	}
 
-	mk_ili9225_set_x(line + 16);
-	mk_ili9225_write_pixels(fb, LCD_WIDTH);
 	__atomic_store_n(&lcd_line_busy, 0, __ATOMIC_SEQ_CST);
 }
 
@@ -197,13 +207,9 @@ void main_core1(void)
 	union core_cmd cmd;
 
 	/* Initialise and control LCD on core 1. */
-	mk_ili9225_init();
 
-	/* Clear LCD screen. */
-	mk_ili9225_fill(0x0000);
+	/* IMPORTANT: Clear LCD screen. */
 
-	/* Set LCD window to DMG size. */
-	mk_ili9225_fill_rect(31,16,LCD_WIDTH,LCD_HEIGHT,0x0000);
 
 	// Sleep used for debugging LCD window.
 	//sleep_ms(1000);
@@ -216,10 +222,6 @@ void main_core1(void)
 		{
 		case CORE_CMD_LCD_LINE:
 			core1_lcd_draw_line(cmd.data);
-			break;
-
-		case CORE_CMD_IDLE_SET:
-			mk_ili9225_display_control(true, cmd.data);
 			break;
 
 		case CORE_CMD_NOP:
@@ -519,9 +521,9 @@ int main(void)
 	static struct gb_s gb;
 	enum gb_init_error_e ret;
 	
-	/* Overclock. */
+	/* no overclock for now. */
 	{
-		const unsigned vco = 1596*1000*1000;	/* 266MHz */
+		const unsigned vco = 1596*1000*1000;
 		const unsigned div1 = 6, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);
@@ -545,11 +547,13 @@ int main(void)
 	gpio_set_function(GPIO_B, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_SELECT, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_START, GPIO_FUNC_SIO);
+	/*
 	gpio_set_function(GPIO_CS, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_CLK, GPIO_FUNC_SPI);
 	gpio_set_function(GPIO_SDA, GPIO_FUNC_SPI);
 	gpio_set_function(GPIO_RS, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_RST, GPIO_FUNC_SIO);
+	*/
 
 	gpio_set_dir(GPIO_UP, false);
 	gpio_set_dir(GPIO_DOWN, false);
@@ -559,12 +563,14 @@ int main(void)
 	gpio_set_dir(GPIO_B, false);
 	gpio_set_dir(GPIO_SELECT, false);
 	gpio_set_dir(GPIO_START, false);
+	/*
 	gpio_set_dir(GPIO_CS, true);
 	gpio_set_dir(GPIO_RS, true);
 	gpio_set_dir(GPIO_RST, true);
 	gpio_set_slew_rate(GPIO_CLK, GPIO_SLEW_RATE_FAST);
 	gpio_set_slew_rate(GPIO_SDA, GPIO_SLEW_RATE_FAST);
-	
+	*/
+
 	gpio_pull_up(GPIO_UP);
 	gpio_pull_up(GPIO_DOWN);
 	gpio_pull_up(GPIO_LEFT);
@@ -574,18 +580,27 @@ int main(void)
 	gpio_pull_up(GPIO_SELECT);
 	gpio_pull_up(GPIO_START);
 
-	/* Set SPI clock to use high frequency. */
+	/* Set SPI clock to use high frequency.
 	clock_configure(clk_peri, 0,
 			CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
 			125 * 1000 * 1000, 125 * 1000 * 1000);
+	*/
+
+    i2c_init(i2c0, 680000);
+    gpio_set_function(21, GPIO_FUNC_I2C);
+    gpio_set_function(20, GPIO_FUNC_I2C);
+    gpio_pull_up(21);
+    gpio_pull_up(20);
+
+    disp.external_vcc=false;
+    ssd1306_init(&disp, 128, 64, 0x3C, i2c0);
+    ssd1306_clear(&disp);
 
 while(true)
 {
 #if ENABLE_LCD
 #if ENABLE_SDCARD
 	/* ROM File selector */
-	mk_ili9225_init();
-	mk_ili9225_fill(0x0000);
 	rom_file_selector();
 #endif
 #endif
@@ -696,13 +711,14 @@ while(true)
 
 		case 'c':
 		{
-			static ili9225_color_mode_e mode = ILI9225_COLOR_MODE_FULL;
+			/*
 			union core_cmd cmd;
 
 			mode = !mode;
 			cmd.cmd = CORE_CMD_IDLE_SET;
 			cmd.data = mode;
 			multicore_fifo_push_blocking(cmd.full);
+			*/
 			break;
 		}
 
