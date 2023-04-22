@@ -59,7 +59,7 @@
 #include "hedley.h"
 #include "minigb_apu.h"
 #include "peanut_gb.h"
-#include "mk_ili9225.h"
+#include "ssd1306.h"
 #include "sdcard.h"
 #include "i2s.h"
 #include "gbcolors.h"
@@ -730,24 +730,7 @@ while(true)
 
 		switch(input)
 		{
-#if 0
-		static bool invert = false;
-		static bool sleep = false;
-		static uint8_t freq = 1;
-		static ili9225_color_mode_e colour = ILI9225_COLOR_MODE_FULL;
 
-		case 'i':
-			invert = !invert;
-			mk_ili9225_display_control(invert, colour);
-			break;
-
-		case 'f':
-			freq++;
-			freq &= 0x0F;
-			mk_ili9225_set_drive_freq(freq);
-			printf("Freq %u\n", freq);
-			break;
-#endif
 		case 'c':
 		{
 			static ili9225_color_mode_e mode = ILI9225_COLOR_MODE_FULL;
