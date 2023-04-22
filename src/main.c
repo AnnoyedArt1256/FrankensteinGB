@@ -15,7 +15,6 @@
 
 // Peanut-GB emulator settings
 #define ENABLE_LCD	1
-#define ENABLE_SOUND	1
 #define ENABLE_SDCARD	1
 #define PEANUT_GB_HIGH_LCD_ACCURACY 1
 #define PEANUT_GB_USE_BIOS 0
@@ -80,17 +79,6 @@
 #define GPIO_RS		20
 #define GPIO_RST	21
 #define GPIO_LED	22
-
-#if ENABLE_SOUND
-/**
- * Global variables for audio task
- * stream contains N=AUDIO_SAMPLES samples
- * each sample is 32 bits
- * 16 bits for the left channel + 16 bits for the right channel in stereo interleaved format)
- * This is intended to be played at AUDIO_SAMPLE_RATE Hz
- */
-uint16_t *stream;
-#endif
 
 /** Definition of ROM data
  * We're going to erase and reprogram a region 1Mb from the start of the flash
@@ -628,20 +616,6 @@ int main(void)
 	spi_init(spi0, 30*1000*1000);
 	spi_set_format(spi0, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
-#if ENABLE_SOUND
-	// Allocate memory for the stream buffer
-	stream=malloc(AUDIO_BUFFER_SIZE_BYTES);
-    assert(stream!=NULL);
-    memset(stream,0,AUDIO_BUFFER_SIZE_BYTES);  // Zero out the stream buffer
-	
-	// Initialize I2S sound driver
-	i2s_config_t i2s_config = i2s_get_default_config();
-	i2s_config.sample_freq=AUDIO_SAMPLE_RATE;
-	i2s_config.dma_trans_count =AUDIO_SAMPLES;
-	i2s_volume(&i2s_config,2);
-	i2s_init(&i2s_config);
-#endif
-
 while(true)
 {
 #if ENABLE_LCD
@@ -679,13 +653,6 @@ while(true)
 	putstdio("LCD ");
 #endif
 
-#if ENABLE_SOUND
-	// Initialize audio emulation
-	audio_init();
-	
-	putstdio("AUDIO ");
-#endif
-
 #if ENABLE_SDCARD
 	/* Load Save File. */
 	read_cart_ram_file(&gb);
@@ -706,12 +673,6 @@ while(true)
 		} while(HEDLEY_LIKELY(gb.gb_frame == 0));
 
 		frames++;
-#if ENABLE_SOUND
-		if(!gb.direct.frame_skip) {
-			audio_callback(NULL, stream, AUDIO_BUFFER_SIZE_BYTES);
-			i2s_dma_write(&i2s_config, stream);
-		}
-#endif
 
 		/* Update buttons state */
 		prev_joypad_bits.up=gb.direct.joypad_bits.up;
@@ -733,16 +694,7 @@ while(true)
 
 		/* hotkeys (select + * combo)*/
 		if(!gb.direct.joypad_bits.select) {
-#if ENABLE_SOUND
-			if(!gb.direct.joypad_bits.up && prev_joypad_bits.up) {
-				/* select + up: increase sound volume */
-				i2s_increase_volume(&i2s_config);
-			}
-			if(!gb.direct.joypad_bits.down && prev_joypad_bits.down) {
-				/* select + down: decrease sound volume */
-				i2s_decrease_volume(&i2s_config);
-			}
-#endif
+
 			if(!gb.direct.joypad_bits.right && prev_joypad_bits.right) {
 				/* select + right: select the next manual color palette */
 				if(manual_palette_selected<12) {
