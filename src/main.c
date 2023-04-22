@@ -61,29 +61,27 @@
 #include "peanut_gb.h"
 #include "ssd1306.h"
 #include "sdcard.h"
-#include "i2s.h"
 #include "gbcolors.h"
 
 /* GPIO Connections. */
-#define GPIO_UP		2
-#define GPIO_DOWN	3
-#define GPIO_LEFT	4
-#define GPIO_RIGHT	5
-#define GPIO_A		6
-#define GPIO_B		7
-#define GPIO_SELECT	8
-#define GPIO_START	9
-#define GPIO_CS		17
-#define GPIO_CLK	18
-#define GPIO_SDA	19
-#define GPIO_RS		20
-#define GPIO_RST	21
-#define GPIO_LED	22
+#define GPIO_UP		16
+#define GPIO_DOWN	2
+#define GPIO_LEFT	18
+#define GPIO_RIGHT	17
+#define GPIO_A		28
+#define GPIO_B		3
+#define GPIO_SELECT	4
+#define GPIO_START	5
+#define GPIO_CS		
+#define GPIO_CLK	
+#define GPIO_SDA	
+#define GPIO_RS		
+#define GPIO_RST	
 
 /** Definition of ROM data
  * We're going to erase and reprogram a region 1Mb from the start of the flash
  * Once done, we can access this at XIP_BASE + 1Mb.
- * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemod Red)
+ * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemon Red)
  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
 const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
@@ -129,37 +127,6 @@ union core_cmd {
 static uint8_t pixels_buffer[LCD_WIDTH];
 
 #define putstdio(x) write(1, x, strlen(x))
-
-/* Functions required for communication with the ILI9225. */
-void mk_ili9225_set_rst(bool state)
-{
-	gpio_put(GPIO_RST, state);
-}
-
-void mk_ili9225_set_rs(bool state)
-{
-	gpio_put(GPIO_RS, state);
-}
-
-void mk_ili9225_set_cs(bool state)
-{
-	gpio_put(GPIO_CS, state);
-}
-
-void mk_ili9225_set_led(bool state)
-{
-	gpio_put(GPIO_LED, state);
-}
-
-void mk_ili9225_spi_write16(const uint16_t *halfwords, size_t len)
-{
-	spi_write16_blocking(spi0, halfwords, len);
-}
-
-void mk_ili9225_delay_ms(unsigned ms)
-{
-	sleep_ms(ms);
-}
 
 /**
  * Returns a byte from the ROM file at the given address.
@@ -583,7 +550,6 @@ int main(void)
 	gpio_set_function(GPIO_SDA, GPIO_FUNC_SPI);
 	gpio_set_function(GPIO_RS, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_RST, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_LED, GPIO_FUNC_SIO);
 
 	gpio_set_dir(GPIO_UP, false);
 	gpio_set_dir(GPIO_DOWN, false);
@@ -596,7 +562,6 @@ int main(void)
 	gpio_set_dir(GPIO_CS, true);
 	gpio_set_dir(GPIO_RS, true);
 	gpio_set_dir(GPIO_RST, true);
-	gpio_set_dir(GPIO_LED, true);
 	gpio_set_slew_rate(GPIO_CLK, GPIO_SLEW_RATE_FAST);
 	gpio_set_slew_rate(GPIO_SDA, GPIO_SLEW_RATE_FAST);
 	
@@ -613,8 +578,6 @@ int main(void)
 	clock_configure(clk_peri, 0,
 			CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
 			125 * 1000 * 1000, 125 * 1000 * 1000);
-	spi_init(spi0, 30*1000*1000);
-	spi_set_format(spi0, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
 while(true)
 {
