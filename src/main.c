@@ -109,6 +109,8 @@ static struct
 
 ssd1306_t disp; // oled display
 
+uint8_t flicker = 0;
+
 /* Multicore command structure. */
 union core_cmd {
     struct {
@@ -184,6 +186,7 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 void core1_lcd_draw_line(const uint_fast8_t line)
 {
 	if (line == 0) {
+		flicker++; flicker &= 1;
 		ssd1306_show(&disp);
 		ssd1306_clear(&disp);
 	}
@@ -193,7 +196,12 @@ void core1_lcd_draw_line(const uint_fast8_t line)
 	for(float x = 0.0f; x < 128; x++)
 	{
 		int realx = (int)((x==0?0:(x/128))*LCD_WIDTH);
-		if (!(pixels_buffer[realx]&2)) {
+		uint8_t realpix = pixels_buffer[realx]&3;
+		if (realpix == 0) {
+			ssd1306_draw_pixel(&disp,128-((int)x),realy);
+		} else if ( (realpix == 1) && ( (((int)x)&1) || (realy&1) ) ) {
+			ssd1306_draw_pixel(&disp,128-((int)x),realy);
+		} else if ( (realpix == 2) && (((int)x)&1) ) {
 			ssd1306_draw_pixel(&disp,128-((int)x),realy);
 		}
 	}
