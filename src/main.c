@@ -48,7 +48,6 @@
 #include <hardware/flash.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
-#include <hardware/i2c.h>
 #include <pico/bootrom.h>
 #include <pico/stdio.h>
 #include <pico/stdlib.h>
@@ -60,7 +59,7 @@
 #include "hedley.h"
 #include "minigb_apu.h"
 #include "peanut_gb.h"
-#include "ssd1306.h"
+#include "my_lcd.h"
 #include "sdcard.h"
 #include "gbcolors.h"
 #include "gbrom.h"
@@ -107,7 +106,7 @@ static struct
 	unsigned down	: 1;
 } prev_joypad_bits;
 
-ssd1306_t disp; // oled display
+//ssd1306_t disp; // oled display
 
 uint8_t flicker = 0;
 
@@ -187,25 +186,22 @@ void core1_lcd_draw_line(const uint_fast8_t line)
 {
 	if (line == 0) {
 		flicker++; flicker &= 1;
-		ssd1306_show(&disp);
-		ssd1306_clear(&disp);
+		LCD_Address_Set(0,0,160,80);
 	}
-	int realy = ((int)line)<<2;
+	uint16_t realy = ((uint16_t)line)*5;
 	realy = realy==0?0:(realy/9);
-	realy = 64-realy;
-	for(float x = 0.0f; x < 128; x++)
-	{
-		int realx = (int)((x==0?0:(x/128))*LCD_WIDTH);
-		uint8_t realpix = pixels_buffer[realx]&3;
-		if (realpix == 0) {
-			ssd1306_draw_pixel(&disp,128-((int)x),realy);
-		} else if ( (realpix == 1) && ( (((int)x)&1) || (realy&1) ) ) {
-			ssd1306_draw_pixel(&disp,128-((int)x),realy);
-		} else if ( (realpix == 2) && (((int)x)&1) ) {
-			ssd1306_draw_pixel(&disp,128-((int)x),realy);
+
+	uint16_t realo = ((uint16_t)(line-1))*5;
+	realo = realo==0?0:(realo/9);
+
+	const uint16_t pal[4] = {
+		BLACK, GRAY, LGRAY, WHITE
+	};
+	if (realy != realo || line == 0) {
+		for(uint16_t x = 1; x < 160; x++) {
+			LCD_WR_DATA(pal[pixels_buffer[x]&3]);
 		}
 	}
-
 	__atomic_store_n(&lcd_line_busy, 0, __ATOMIC_SEQ_CST);
 }
 
@@ -594,15 +590,9 @@ int main(void)
 			125 * 1000 * 1000, 125 * 1000 * 1000);
 	*/
 
-    i2c_init(i2c0, 680000);
-    gpio_set_function(21, GPIO_FUNC_I2C);
-    gpio_set_function(20, GPIO_FUNC_I2C);
-    gpio_pull_up(21);
-    gpio_pull_up(20);
-
-    disp.external_vcc=false;
-    ssd1306_init(&disp, 128, 64, 0x3C, i2c0);
-    ssd1306_clear(&disp);
+	LCD_Init();
+	LCD_SetRotation(3);
+	LCD_Clear(0x0000);
 
 while(true)
 {
