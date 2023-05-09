@@ -32,8 +32,8 @@ static spi_t spis[]={
     {
         .hw_inst=spi1,
         .miso_gpio=12,
-        .mosi_gpio=15,
-        .sck_gpio=14,
+        .mosi_gpio=11,
+        .sck_gpio=10,
         .baud_rate=12500*1000,
         .dma_isr=spi_dma_isr
     }

@@ -15,7 +15,7 @@
 
 // Peanut-GB emulator settings
 #define ENABLE_LCD	1
-#define ENABLE_SDCARD	0
+#define ENABLE_SDCARD	1
 #define PEANUT_GB_HIGH_LCD_ACCURACY 1
 #define PEANUT_GB_USE_BIOS 0
 
@@ -62,7 +62,6 @@
 #include "my_lcd.h"
 #include "sdcard.h"
 #include "gbcolors.h"
-#include "gbrom.h"
 
 /* GPIO Connections. */
 #define GPIO_UP		16
@@ -85,8 +84,8 @@
  * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemon Red)
  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
-//const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
-const uint8_t *rom = &test_gb;
+const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
+//const uint8_t *rom = &test_gb;
 static unsigned char rom_bank0[65536];
 
 static uint8_t ram[32768];
@@ -284,6 +283,8 @@ void read_cart_ram_file(struct gb_s *gb) {
 			f_read(&fil,ram,f_size(&fil),&br);
 		} else {
 			printf("E f_open(%s) error: %s (%d)\n",filename,FRESULT_str(fr),fr);
+			f_unmount(pSD->pcName);
+			return;
 		}
 		
 		fr=f_close(&fil);
@@ -388,7 +389,7 @@ void load_cart_rom_file(char *filename) {
 /**
  * Function used by the rom file selector to display one page of .gb rom files
  */
-uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page) {
+uint16_t rom_file_selector_display_page(char filename[10][256],uint16_t num_page) {
 	sd_card_t *pSD=sd_get_by_num(0);
     DIR dj;
     FILINFO fno;
@@ -401,7 +402,7 @@ uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page
     }
 
 	/* clear the filenames array */
-	for(uint8_t ifile=0;ifile<22;ifile++) {
+	for(uint8_t ifile=0;ifile<10;ifile++) {
 		strcpy(filename[ifile],"");
 	}
 
@@ -411,7 +412,7 @@ uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page
 
 	/* skip the first N pages */
 	if(num_page>0) {
-		while(num_file<num_page*22 && fr == FR_OK && fno.fname[0]) {
+		while(num_file<num_page*10 && fr == FR_OK && fno.fname[0]) {
 			num_file++;
 			fr=f_findnext(&dj, &fno);
 		}
@@ -419,7 +420,7 @@ uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page
 
 	/* store the filenames of this page */
 	num_file=0;
-    while(num_file<22 && fr == FR_OK && fno.fname[0]) {
+    while(num_file<10 && fr == FR_OK && fno.fname[0]) {
 		strcpy(filename[num_file],fno.fname);
         num_file++;
         fr=f_findnext(&dj, &fno);
@@ -428,29 +429,29 @@ uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page
 	f_unmount(pSD->pcName);
 
 	/* display *.gb rom files on screen */
-	mk_ili9225_fill(0x0000);
+	LCD_Clear(0x0000);
 	for(uint8_t ifile=0;ifile<num_file;ifile++) {
-		mk_ili9225_text(filename[ifile],0,ifile*8,0xFFFF,0x0000);
+		LCD_ShowStringLn(0,ifile*16,0,152,filename[ifile],0,GRAY);
     }
 	return num_file;
 }
 
 /**
- * The ROM selector displays pages of up to 22 rom files
+ * The ROM selector displays pages of up to 10 rom files
  * allowing the user to select which rom file to start
  * Copy your *.gb rom files to the root directory of the SD card
  */
 void rom_file_selector() {
     uint16_t num_page;
-	char filename[22][256];
+	char filename[10][256];
 	uint16_t num_file;
 	
-	/* display the first page with up to 22 rom files */
+	/* display the first page with up to 10 rom files */
 	num_file=rom_file_selector_display_page(filename,num_page);
 
 	/* select the first rom */
 	uint8_t selected=0;
-	mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+	LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,LGRAY);
 
 	/* get user's input */
 	bool up,down,left,right,a,b,select,start;
@@ -465,30 +466,33 @@ void rom_file_selector() {
 		start=gpio_get(GPIO_START);
 		if(!start) {
 			/* re-start the last game (no need to reprogram flash) */
+			sleep_ms(800);
 			break;
 		}
 		if(!a | !b) {
 			/* copy the rom from the SD card to flash and start the game */
+			sleep_ms(800);
 			load_cart_rom_file(filename[selected]);
+			sleep_ms(800);
 			break;
 		}
 		if(!down) {
 			/* select the next rom */
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0x0000);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,GRAY);
 			selected++;
 			if(selected>=num_file) selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,LGRAY);
 			sleep_ms(150);
 		}
 		if(!up) {
 			/* select the previous rom */
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0x0000);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,GRAY);
 			if(selected==0) {
 				selected=num_file-1;
 			} else {
 				selected--;
 			}
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,LGRAY);
 			sleep_ms(150);
 		}
 		if(!right) {
@@ -502,7 +506,7 @@ void rom_file_selector() {
 			}
 			/* select the first file */
 			selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,LGRAY);
 			sleep_ms(150);
 		}
 		if((!left) && num_page>0) {
@@ -511,7 +515,7 @@ void rom_file_selector() {
 			num_file=rom_file_selector_display_page(filename,num_page);
 			/* select the first file */
 			selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			LCD_ShowStringLn(0,selected*16,0,152,filename[selected],0,LGRAY);
 			sleep_ms(150);
 		}
 		tight_loop_contents();
@@ -598,7 +602,6 @@ while(true)
 {
 #if ENABLE_LCD
 #if ENABLE_SDCARD
-	/* ROM File selector */
 	rom_file_selector();
 #endif
 #endif
@@ -617,7 +620,7 @@ while(true)
 
 	/* Automatically assign a colour palette to the game */
 	char rom_title[16];
-	auto_assign_palette(palette, gb_colour_hash(&gb),gb_get_rom_name(&gb,rom_title));
+	//auto_assign_palette(palette, gb_colour_hash(&gb),gb_get_rom_name(&gb,rom_title));
 	
 #if ENABLE_LCD
 	gb_init_lcd(&gb, &lcd_draw_line);
@@ -646,7 +649,7 @@ while(true)
 		do {
 			__gb_step_cpu(&gb);
 			tight_loop_contents();
-		} while(HEDLEY_LIKELY(gb.gb_frame == 0));
+		} while(gb.gb_frame == 0);//while(HEDLEY_LIKELY(gb.gb_frame == 0));
 
 		frames++;
 
@@ -670,21 +673,22 @@ while(true)
 
 		/* hotkeys (select + * combo)*/
 		if(!gb.direct.joypad_bits.select) {
-
+			/*
 			if(!gb.direct.joypad_bits.right && prev_joypad_bits.right) {
-				/* select + right: select the next manual color palette */
+				 select + right: select the next manual color palette 
 				if(manual_palette_selected<12) {
 					manual_palette_selected++;
 					manual_assign_palette(palette,manual_palette_selected);
 				}	
 			}
 			if(!gb.direct.joypad_bits.left && prev_joypad_bits.left) {
-				/* select + left: select the previous manual color palette */
+				select + left: select the previous manual color palette 
 				if(manual_palette_selected>0) {
 					manual_palette_selected--;
 					manual_assign_palette(palette,manual_palette_selected);
 				}
 			}
+			*/
 			if(!gb.direct.joypad_bits.start && prev_joypad_bits.start) {
 				/* select + start: save ram and resets to the game selection menu */
 #if ENABLE_SDCARD				
@@ -808,6 +812,7 @@ out:
 	puts("\nEmulation Ended");
 	/* stop lcd task running on core 1 */
 	multicore_reset_core1(); 
+	sleep_ms(800);
 
 }
 
